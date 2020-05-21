@@ -1021,6 +1021,11 @@ static void MB_Update(void)
 
 //-----------------------------------------------------------------------------
 
+#if 1
+static bool dbgFirst = true;
+static UINT64 dbgSTime = 0;
+#endif
+
 static void SetSpeechIRQ(SY6522_AY8910* pMB);
 
 //#define DBG_SSI263_UPDATE
@@ -1033,6 +1038,13 @@ static void SSI263_Update_IRQ(void)
 {
 	_ASSERT(g_nCurrentActivePhoneme != -1);
 	g_nCurrentActivePhoneme = -1;
+
+	if (dbgFirst)
+	{
+		UINT64 diff = g_nCumulativeCycles - dbgSTime;
+		LogOutput("1st phoneme playback time = 0x%08X cy\n", (UINT32)diff);
+		dbgFirst = false;
+	}
 
 	// Phoneme complete, so generate IRQ if necessary
 	SY6522_AY8910* pMB = &g_MB[g_nSSI263Device];
@@ -1052,6 +1064,7 @@ static void SSI263_Update(void)
 		{
 			// Willy Byte does SSI263 detection with drive motor on - FIXME: doesn't always detect SSI263 though!
 			g_uPhonemeLength = 0;
+			if (dbgFirst) LogOutput("1st phoneme short-circuited by fullspeed\n");
 			SSI263_Update_IRQ();
 		}
 
@@ -1289,6 +1302,12 @@ static short* g_pPhonemeData00 = NULL;	// TODO: fix leak
 
 static void SSI263_Play(unsigned int nPhoneme)
 {
+	if (dbgFirst)
+	{
+		dbgSTime = g_nCumulativeCycles;
+		LogOutput("1st phoneme = 0x%02X\n", nPhoneme);
+	}
+
 //	_ASSERT(g_nCurrentActivePhoneme == -1);
 	g_nCurrentActivePhoneme = nPhoneme;
 
@@ -1537,6 +1556,9 @@ static void ResetState()
 //	g_bMBAvailable = false;
 //	g_SoundcardType = CT_Empty;	// Don't uncomment, else _ASSERT will fire in MB_Read() after an F2->MB_Reset()
 //	g_bPhasorEnable = false;
+
+	dbgFirst = true;
+	dbgSTime = 0;
 }
 
 void MB_Reset()	// CTRL+RESET or power-cycle
