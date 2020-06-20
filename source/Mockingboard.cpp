@@ -1063,7 +1063,7 @@ static void SSI263_Update(void)
 	{
 		if (g_uPhonemeLength)
 		{
-			// Willy Byte does SSI263 detection with drive motor on - FIXME: doesn't always detect SSI263 though!
+			// Willy Byte does SSI263 detection with drive motor on
 			g_uPhonemeLength = 0;
 			if (dbgFirst) LogOutput("1st phoneme short-circuited by fullspeed\n");
 			SSI263_Update_IRQ();
@@ -1106,7 +1106,7 @@ static void SSI263_Update(void)
 	const double kMinimumUpdateInterval = 500.0;	// Arbitary (500 cycles = 21 samples)
 	const double kMaximumUpdateInterval = (double)(0xFFFF+2);	// Max 6522 timer interval (2756 samples)
 
-	if (g_uLastSSI263UpdateCycle == 0)
+	if (g_uLastSSI263UpdateCycle == 0 || nowNormalSpeed)
 		g_uLastSSI263UpdateCycle = g_uLastCumulativeCycles;		// Initial call to SSI263_Update() after reset/power-cycle
 
 	_ASSERT(g_uLastCumulativeCycles >= g_uLastSSI263UpdateCycle);
@@ -1122,7 +1122,8 @@ static void SSI263_Update(void)
 	const int nNumSamplesPerPeriod = (int) ((double)(SAMPLE_RATE_SSI263) / nIrqFreq);	// Eg. For 60Hz this is 367
 
 	static int nNumSamplesError = 0;
-	if (nowNormalSpeed) nNumSamplesError = 0;
+	if (nowNormalSpeed)
+		nNumSamplesError = 0;
 	int nNumSamples = nNumSamplesPerPeriod + nNumSamplesError;					// Apply correction
 	if (nNumSamples <= 0)
 		nNumSamples = 0;
