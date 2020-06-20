@@ -1030,6 +1030,7 @@ static void SetSpeechIRQ(SY6522_AY8910* pMB);
 
 //#define DBG_SSI263_UPDATE
 static UINT64 g_uLastSSI263UpdateCycle = 0;
+static bool g_ssi263UpdateWasFullSpeed = false;
 
 static const short* g_pPhonemeData = NULL;
 static UINT g_uPhonemeLength = 0;	// length in samples
@@ -1068,8 +1069,12 @@ static void SSI263_Update(void)
 			SSI263_Update_IRQ();
 		}
 
+		g_ssi263UpdateWasFullSpeed = true;
 		return;
 	}
+
+	const bool nowNormalSpeed = g_ssi263UpdateWasFullSpeed;	// Just transitioned from full-speed to normal speed
+	g_ssi263UpdateWasFullSpeed = false;
 
 	//
 
@@ -1117,6 +1122,7 @@ static void SSI263_Update(void)
 	const int nNumSamplesPerPeriod = (int) ((double)(SAMPLE_RATE_SSI263) / nIrqFreq);	// Eg. For 60Hz this is 367
 
 	static int nNumSamplesError = 0;
+	if (nowNormalSpeed) nNumSamplesError = 0;
 	int nNumSamples = nNumSamplesPerPeriod + nNumSamplesError;					// Apply correction
 	if (nNumSamples <= 0)
 		nNumSamples = 0;
@@ -1137,7 +1143,7 @@ static void SSI263_Update(void)
 		return;
 
 	static DWORD dwByteOffset = (DWORD)-1;
-	if(dwByteOffset == (DWORD)-1)
+	if (dwByteOffset == (DWORD)-1 || nowNormalSpeed)
 	{
 		// First time in this func
 
@@ -1549,6 +1555,7 @@ static void ResetState()
 
 	g_uLastMBUpdateCycle = 0;
 	g_uLastSSI263UpdateCycle = 0;
+	g_ssi263UpdateWasFullSpeed = false;
 	g_cyclesThisAudioFrame = 0;
 	g_cyclesThisAudioFrameSSI263 = 0;
 
