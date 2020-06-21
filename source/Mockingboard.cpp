@@ -1101,6 +1101,17 @@ static void SSI263_Update(void)
 
 	//
 
+	static int nNumSamplesError = 0;
+	static DWORD dwByteOffset = (DWORD)-1;
+
+	// Reset static vars here, since could early-return just below where: 'updateInterval < kMinimumUpdateInterval'
+	// . NB. next call to this function: nowNormalSpeed != true
+	if (nowNormalSpeed)
+	{
+		nNumSamplesError = 0;
+		dwByteOffset = (DWORD)-1;
+	}
+
 	// For small timer periods, wait for a period of 500cy before updating DirectSound ring-buffer.
 	// NB. A timer period of less than 24cy will yield nNumSamplesPerPeriod=0.
 	const double kMinimumUpdateInterval = 500.0;	// Arbitary (500 cycles = 21 samples)
@@ -1121,9 +1132,6 @@ static void SSI263_Update(void)
 	const double nIrqFreq = g_fCurrentCLK6502 / updateInterval + 0.5;			// Round-up
 	const int nNumSamplesPerPeriod = (int) ((double)(SAMPLE_RATE_SSI263) / nIrqFreq);	// Eg. For 60Hz this is 367
 
-	static int nNumSamplesError = 0;
-	if (nowNormalSpeed)
-		nNumSamplesError = 0;
 	int nNumSamples = nNumSamplesPerPeriod + nNumSamplesError;					// Apply correction
 	if (nNumSamples <= 0)
 		nNumSamples = 0;
@@ -1143,12 +1151,15 @@ static void SSI263_Update(void)
 	if(FAILED(hr))
 		return;
 
-	static DWORD dwByteOffset = (DWORD)-1;
-	if (dwByteOffset == (DWORD)-1 || nowNormalSpeed)
+	if (dwByteOffset == (DWORD)-1)
 	{
-		// First time in this func
+		// First time in this func (or transitioned from full-speed to normal speed)
 
 		dwByteOffset = dwCurrentWriteCursor;
+#ifdef DBG_SSI263_UPDATE
+		double fTicksSecs = (double)GetTickCount() / 1000.0;
+		LogOutput("%010.3f: [SSUpdtInit]PC=%08X, WC=%08X, Diff=%08X, Off=%08X, NS=%08X xxx\n", fTicksSecs, dwCurrentPlayCursor, dwCurrentWriteCursor, dwCurrentWriteCursor-dwCurrentPlayCursor, dwByteOffset, nNumSamples);
+#endif
 	}
 	else
 	{
