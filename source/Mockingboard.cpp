@@ -1028,7 +1028,7 @@ static UINT64 dbgSTime = 0;
 
 static void SetSpeechIRQ(SY6522_AY8910* pMB);
 
-//#define DBG_SSI263_UPDATE
+#define DBG_SSI263_UPDATE
 static UINT64 g_uLastSSI263UpdateCycle = 0;
 static bool g_ssi263UpdateWasFullSpeed = false;
 
@@ -1107,59 +1107,27 @@ static void SSI263_Update(void)
 	// Reset static vars here, since could early-return just below where: 'updateInterval < kMinimumUpdateInterval'
 	// . NB. next call to this function: nowNormalSpeed != true
 	if (nowNormalSpeed)
-	{
-		nNumSamplesError = 0;
-		dwByteOffset = (DWORD)-1;
-	}
+		dwByteOffset = (DWORD)-1;	// ...which resets nNumSamplesError below
 
-	// For small timer periods, wait for a period of 500cy before updating DirectSound ring-buffer.
-	// NB. A timer period of less than 24cy will yield nNumSamplesPerPeriod=0.
-	const double kMinimumUpdateInterval = 500.0;	// Arbitary (500 cycles = 21 samples)
-	const double kMaximumUpdateInterval = (double)(0xFFFF+2);	// Max 6522 timer interval (2756 samples)
-
-	if (g_uLastSSI263UpdateCycle == 0 || nowNormalSpeed)
-		g_uLastSSI263UpdateCycle = g_uLastCumulativeCycles;		// Initial call to SSI263_Update() after reset/power-cycle
-
-	_ASSERT(g_uLastCumulativeCycles >= g_uLastSSI263UpdateCycle);
-	double updateInterval = (double)(g_uLastCumulativeCycles - g_uLastSSI263UpdateCycle);
-	if (updateInterval < kMinimumUpdateInterval)
-		return;
-	if (updateInterval > kMaximumUpdateInterval)
-		updateInterval = kMaximumUpdateInterval;
-
-	g_uLastSSI263UpdateCycle = g_uLastCumulativeCycles;
-
-	const double nIrqFreq = g_fCurrentCLK6502 / updateInterval + 0.5;			// Round-up
-	const int nNumSamplesPerPeriod = (int) ((double)(SAMPLE_RATE_SSI263) / nIrqFreq);	// Eg. For 60Hz this is 367
-
-	int nNumSamples = nNumSamplesPerPeriod + nNumSamplesError;					// Apply correction
-	if (nNumSamples <= 0)
-		nNumSamples = 0;
-	if (nNumSamples > 2*nNumSamplesPerPeriod)
-		nNumSamples = 2*nNumSamplesPerPeriod;
-
-	if (nNumSamples > g_dwDSSSI263BufferSize)
-		nNumSamples = g_dwDSSSI263BufferSize;	// Clamp to prevent buffer overflow
-
-//	if (nNumSamples)
-//		{ /* Generate new sample data*/ }
-
-	//
+	//-------------
 
 	DWORD dwCurrentPlayCursor, dwCurrentWriteCursor;
 	HRESULT hr = SSI263SingleVoice.lpDSBvoice->GetCurrentPosition(&dwCurrentPlayCursor, &dwCurrentWriteCursor);
-	if(FAILED(hr))
+	if (FAILED(hr))
 		return;
+
+	bool prefillBufferOnInit = false;
 
 	if (dwByteOffset == (DWORD)-1)
 	{
 		// First time in this func (or transitioned from full-speed to normal speed)
-
-		dwByteOffset = dwCurrentWriteCursor;
 #ifdef DBG_SSI263_UPDATE
 		double fTicksSecs = (double)GetTickCount() / 1000.0;
-		LogOutput("%010.3f: [SSUpdtInit]PC=%08X, WC=%08X, Diff=%08X, Off=%08X, NS=%08X xxx\n", fTicksSecs, dwCurrentPlayCursor, dwCurrentWriteCursor, dwCurrentWriteCursor-dwCurrentPlayCursor, dwByteOffset, nNumSamples);
+		LogOutput("%010.3f: [SSUpdtInit]PC=%08X, WC=%08X, Diff=%08X, Off=%08X xxx\n", fTicksSecs, dwCurrentPlayCursor, dwCurrentWriteCursor, dwCurrentWriteCursor-dwCurrentPlayCursor, dwByteOffset);
 #endif
+		dwByteOffset = dwCurrentWriteCursor;
+		nNumSamplesError = 0;
+		prefillBufferOnInit = true;
 	}
 	else
 	{
@@ -1172,7 +1140,7 @@ static void SSI263_Update(void)
 			{
 #ifdef DBG_SSI263_UPDATE
 				double fTicksSecs = (double)GetTickCount() / 1000.0;
-				LogOutput("%010.3f: [SSUpdt]    PC=%08X, WC=%08X, Diff=%08X, Off=%08X, NS=%08X xxx\n", fTicksSecs, dwCurrentPlayCursor, dwCurrentWriteCursor, dwCurrentWriteCursor-dwCurrentPlayCursor, dwByteOffset, nNumSamples);
+				LogOutput("%010.3f: [SSUpdt]    PC=%08X, WC=%08X, Diff=%08X, Off=%08X xxx\n", fTicksSecs, dwCurrentPlayCursor, dwCurrentWriteCursor, dwCurrentWriteCursor-dwCurrentPlayCursor, dwByteOffset);
 #endif
 				dwByteOffset = dwCurrentWriteCursor;
 				nNumSamplesError = 0;
@@ -1185,7 +1153,7 @@ static void SSI263_Update(void)
 			{
 #ifdef DBG_SSI263_UPDATE
 				double fTicksSecs = (double)GetTickCount() / 1000.0;
-				LogOutput("%010.3f: [SSUpdt]    PC=%08X, WC=%08X, Diff=%08X, Off=%08X, NS=%08X XXX\n", fTicksSecs, dwCurrentPlayCursor, dwCurrentWriteCursor, dwCurrentWriteCursor-dwCurrentPlayCursor, dwByteOffset, nNumSamples);
+				LogOutput("%010.3f: [SSUpdt]    PC=%08X, WC=%08X, Diff=%08X, Off=%08X XXX\n", fTicksSecs, dwCurrentPlayCursor, dwCurrentWriteCursor, dwCurrentWriteCursor-dwCurrentPlayCursor, dwByteOffset);
 #endif
 				dwByteOffset = dwCurrentWriteCursor;
 				nNumSamplesError = 0;
@@ -1193,28 +1161,88 @@ static void SSI263_Update(void)
 		}
 	}
 
-	int nBytesRemaining = dwByteOffset - dwCurrentPlayCursor;
-	if (nBytesRemaining < 0)
-		nBytesRemaining += g_dwDSSSI263BufferSize;
+	//-------------
 
-	// Calc correction factor so that play-buffer doesn't under/overflow
-	const int nErrorInc = SoundCore_GetErrorInc();
-	if (nBytesRemaining < g_dwDSSSI263BufferSize / 4)
-		nNumSamplesError += nErrorInc;				// < 0.25 of buffer remaining
-	else if (nBytesRemaining > g_dwDSSSI263BufferSize / 2)
-		nNumSamplesError -= nErrorInc;				// > 0.50 of buffer remaining
+	const UINT kMinBytesInBuffer = g_dwDSSSI263BufferSize / 4;	// 25% full
+	int nNumSamples = 0;
+	double updateInterval = 0.0;
+
+	if (prefillBufferOnInit)
+	{
+		// If we just set dwByteOffset := dwCurrentWriteCursor, then nBytesRemaining = (dwCurrentWriteCursor - dwCurrentPlayCursor) = 0x52A
+		// . And 0x52A is less than 0x2000 (quarter of ring-buffer size), so NumSamplesError = SoundCore_GetErrorInc()
+		// . So it'll insert ~44 samples (~1000 cycles) into the ring-buffer
+		// . Then next time (in ~1000 cycles time) the play-cursor *may* overtake dwByteOffset, so NumSamplesError will restart incrementing
+		// . ... and eventually NumSamplesError will continue incrementing until it gets to 0xC08, at which point the ring-buffer will be > a quarter full
+		// Instead just prefill first 25% of buffer with zeros:
+		// . so we have a quarter buffer of silence/lag before the real sample data begins.
+		// . NB. this is fine, since it's the steady state; and it's likely that no actual data will ever occur during this initial time.
+
+		g_uLastSSI263UpdateCycle = g_uLastCumulativeCycles;
+
+		nNumSamples = kMinBytesInBuffer / sizeof(short);
+		memset(&g_nMixBufferSSI263[0], 0, nNumSamples);
+	}
 	else
-		nNumSamplesError = 0;						// Acceptable amount of data in buffer
+	{
+		// For small timer periods, wait for a period of 500cy before updating DirectSound ring-buffer.
+		// NB. A timer period of less than 24cy will yield nNumSamplesPerPeriod=0.
+		const double kMinimumUpdateInterval = 500.0;	// Arbitary (500 cycles = 21 samples)
+		const double kMaximumUpdateInterval = (double)(0xFFFF+2);	// Max 6522 timer interval (1372 samples)
+
+		if (g_uLastSSI263UpdateCycle == 0)
+			g_uLastSSI263UpdateCycle = g_uLastCumulativeCycles;		// Initial call to SSI263_Update() after reset/power-cycle
+
+		_ASSERT(g_uLastCumulativeCycles >= g_uLastSSI263UpdateCycle);
+		updateInterval = (double)(g_uLastCumulativeCycles - g_uLastSSI263UpdateCycle);
+		if (updateInterval < kMinimumUpdateInterval)
+			return;
+		if (updateInterval > kMaximumUpdateInterval)
+			updateInterval = kMaximumUpdateInterval;
+
+		g_uLastSSI263UpdateCycle = g_uLastCumulativeCycles;
+
+		const double nIrqFreq = g_fCurrentCLK6502 / updateInterval + 0.5;			// Round-up
+		const int nNumSamplesPerPeriod = (int) ((double)(SAMPLE_RATE_SSI263) / nIrqFreq);	// Eg. For 60Hz this is 367
+
+		nNumSamples = nNumSamplesPerPeriod + nNumSamplesError;						// Apply correction
+		if (nNumSamples <= 0)
+			nNumSamples = 0;
+		if (nNumSamples > 2*nNumSamplesPerPeriod)
+			nNumSamples = 2*nNumSamplesPerPeriod;
+
+		if (nNumSamples > g_dwDSSSI263BufferSize)
+			nNumSamples = g_dwDSSSI263BufferSize;	// Clamp to prevent buffer overflow
+
+//		if (nNumSamples)
+//			{ /* Generate new sample data*/ }
+
+		//
+
+		int nBytesRemaining = dwByteOffset - dwCurrentPlayCursor;
+		if (nBytesRemaining < 0)
+			nBytesRemaining += g_dwDSSSI263BufferSize;
+
+		// Calc correction factor so that play-buffer doesn't under/overflow
+		const int nErrorInc = SoundCore_GetErrorInc();
+		if (nBytesRemaining < kMinBytesInBuffer)
+			nNumSamplesError += nErrorInc;				// < 0.25 of buffer remaining
+		else if (nBytesRemaining > g_dwDSSSI263BufferSize / 2)
+			nNumSamplesError -= nErrorInc;				// > 0.50 of buffer remaining
+		else
+			nNumSamplesError = 0;						// Acceptable amount of data in buffer
+	}
 
 #ifdef DBG_SSI263_UPDATE
 	double fTicksSecs = (double)GetTickCount() / 1000.0;
+
 	LogOutput("%010.3f: [SSUpdt]    PC=%08X, WC=%08X, Diff=%08X, Off=%08X, NS=%08X, NSE=%08X, Interval=%f\n", fTicksSecs, dwCurrentPlayCursor, dwCurrentWriteCursor, dwCurrentWriteCursor - dwCurrentPlayCursor, dwByteOffset, nNumSamples, nNumSamplesError, updateInterval);
 #endif
 
 	if (nNumSamples == 0)
 		return;
 
-	//
+	//-------------
 
 	bool bSpeechIRQ = false;
 
@@ -1222,7 +1250,7 @@ static void SSI263_Update(void)
 		short* pMixBuffer = &g_nMixBufferSSI263[0];
 		UINT copyLength = nNumSamples;
 
-		if (g_uPhonemeLength)
+		if (g_uPhonemeLength && !prefillBufferOnInit)
 		{
 			UINT phonemeLen = g_uPhonemeLength > (UINT)nNumSamples ? nNumSamples : g_uPhonemeLength;
 			if (phonemeLen > copyLength) phonemeLen = copyLength;
@@ -1240,7 +1268,6 @@ static void SSI263_Update(void)
 
 		if (copyLength)
 		{
-			_ASSERT(g_uPhonemeLength == 0);
 			memset(pMixBuffer, 0, copyLength*sizeof(short));
 		}
 	}
@@ -1263,6 +1290,8 @@ static void SSI263_Update(void)
 	// Commit sound buffer
 	hr = SSI263SingleVoice.lpDSBvoice->Unlock((void*)pDSLockedBuffer0, dwDSLockedBufferSize0,
 											  (void*)pDSLockedBuffer1, dwDSLockedBufferSize1);
+	if (FAILED(hr))
+		return;
 
 	dwByteOffset = (dwByteOffset + (DWORD)nNumSamples*sizeof(short)*g_nSSI263_NumChannels) % g_dwDSSSI263BufferSize;
 
