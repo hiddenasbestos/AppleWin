@@ -91,7 +91,7 @@ COLORREF         g_nMonochromeRGB    = RGB(0xC0,0xC0,0xC0);
 uint32_t  g_uVideoMode     = VF_TEXT; // Current Video Mode (this is the last set one as it may change mid-scan line!)
 
 DWORD     g_eVideoType     = VT_DEFAULT;
-static VideoStyle_e g_eVideoStyle = VS_HALF_SCANLINES;
+static VideoStyle_e g_eVideoStyle = VS_NONE; // GC: Changed from VS_HALF_SCANLINES, Grid Cartographer has its own scanline options.
 
 static bool g_bVideoScannerNTSC = true;  // NTSC video scanning (or PAL)
 
@@ -1317,7 +1317,7 @@ void Config_Load_Video()
 	REGLOAD_DEFAULT(TEXT(REGVALUE_VIDEO_MODE), &dwTmp, (DWORD)VT_DEFAULT);
 	g_eVideoType = dwTmp;
 
-	REGLOAD_DEFAULT(TEXT(REGVALUE_VIDEO_STYLE), &dwTmp, (DWORD)VS_HALF_SCANLINES);
+	REGLOAD_DEFAULT(TEXT(REGVALUE_VIDEO_STYLE), &dwTmp, (DWORD)VS_NONE); // GC: Changed from VS_HALF_SCANLINES, Grid Cartographer has its own scanline options.
 	g_eVideoStyle = (VideoStyle_e)dwTmp;
 
 	REGLOAD_DEFAULT(TEXT(REGVALUE_VIDEO_MONO_COLOR), &dwTmp, (DWORD)RGB(0xC0, 0xC0, 0xC0));
@@ -1327,7 +1327,7 @@ void Config_Load_Video()
 	SetVideoRefreshRate((VideoRefreshRate_e)dwTmp);
 
 	// RIK START
-	REGLOAD_DEFAULT(TEXT(REGVALUE_VIDEO_REMOTECONTROL), &dwTmp, (DWORD)false);
+	REGLOAD_DEFAULT(TEXT(REGVALUE_VIDEO_REMOTECONTROL), &dwTmp, (DWORD)true); // GC: Default ON, the typical use case for Grid Cartographer.
 	RemoteControlManager::setRemoteControlEnabled(dwTmp);
 	REGLOAD_DEFAULT(TEXT(REGVALUE_VIDEO_RC_TRACKONLY), &dwTmp, (DWORD)false);
 	RemoteControlManager::setTrackOnlyEnabled(dwTmp);
