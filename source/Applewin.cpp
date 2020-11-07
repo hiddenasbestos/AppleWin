@@ -736,7 +736,7 @@ void LoadConfiguration(void)
 	if(REGLOAD(TEXT(REGVALUE_THE_FREEZES_F8_ROM), &dwTmp))
 		sg_PropertySheet.SetTheFreezesF8Rom(dwTmp);
 
-	REGLOAD_DEFAULT( TEXT( REGVALUE_SPKR_VOLUME ), &dwTmp, 6 ); // GC: If no volume is set, use 50% (-6db) - so startup beep doesn't blast your ears
+	REGLOAD_DEFAULT( TEXT( REGVALUE_SPKR_VOLUME ), &dwTmp, 16 ); // GC: If no volume is set, use a middle value - so startup beep doesn't blast your ears
 	SpkrSetVolume(dwTmp, sg_PropertySheet.GetVolumeMax());
 
 	if(REGLOAD(TEXT(REGVALUE_MB_VOLUME), &dwTmp))
