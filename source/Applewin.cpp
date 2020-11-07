@@ -835,8 +835,8 @@ void LoadConfiguration(void)
 	REGLOAD_DEFAULT(TEXT(REGVALUE_PRINTER_IDLE_LIMIT), &dwTmp, 10);
 	Printer_SetIdleLimit(dwTmp);
 
-	if (REGLOAD(TEXT(REGVALUE_WINDOW_SCALE), &dwTmp))
-		SetViewportScale(dwTmp);
+	REGLOAD_DEFAULT( TEXT( REGVALUE_WINDOW_SCALE ), &dwTmp, 1 ); // GC: Default window scale of 1x, we don't need a big window getting in the way.
+	SetViewportScale(dwTmp);
 
 	if (REGLOAD(TEXT(REGVALUE_CONFIRM_REBOOT), &dwTmp))
 		g_bConfirmReboot = dwTmp;
