@@ -993,8 +993,8 @@ static void RegisterHotKeys(void)
 		if (!bStatus[2])
 			msg += "\n. Ctrl+PrintScreen";
 
-		if (g_bShowPrintScreenWarningDialog)
-			MessageBox( g_hFrameWindow, msg.c_str(), "Warning", MB_ICONASTERISK | MB_OK );
+		/*if (g_bShowPrintScreenWarningDialog)
+			MessageBox( g_hFrameWindow, msg.c_str(), "Warning", MB_ICONASTERISK | MB_OK );*/ // GC - this isn't used anyway so who cares.
 
 		msg += "\n";
 		LogFileOutput(msg.c_str());
